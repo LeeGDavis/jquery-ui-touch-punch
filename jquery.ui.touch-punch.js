@@ -1,5 +1,5 @@
 /*!
- * jQuery UI Touch Punch 0.2.3+0.0.1
+ * jQuery UI Touch Punch 0.2.3+0.0.2
  *
  * Copyright 2011–2014, Dave Furfero
  * Dual licensed under the MIT or GPL Version 2 licenses.
@@ -34,6 +34,8 @@
   var mouseProto = $.ui.mouse.prototype,
       _mouseInit = mouseProto._mouseInit,
       _mouseDestroy = mouseProto._mouseDestroy,
+      clickPixelTolerance = 5,
+      clickTimeTolerance = 1000, //milliseconds
       touchHandled;
 
   /**
@@ -52,29 +54,66 @@
 
     var touch = event.originalEvent.changedTouches[0],
         simulatedEvent = document.createEvent('MouseEvents');
-    
+
     // Initialize the simulated mouse event using the touch event's coordinates
     simulatedEvent.initMouseEvent(
       simulatedType,    // type
-      true,             // bubbles                    
-      true,             // cancelable                 
-      window,           // view                       
-      1,                // detail                     
-      touch.screenX,    // screenX                    
-      touch.screenY,    // screenY                    
-      touch.clientX,    // clientX                    
-      touch.clientY,    // clientY                    
-      false,            // ctrlKey                    
-      false,            // altKey                     
-      false,            // shiftKey                   
-      false,            // metaKey                    
-      0,                // button                     
-      null              // relatedTarget              
+      true,             // bubbles
+      true,             // cancelable
+      window,           // view
+      1,                // detail
+      touch.screenX,    // screenX
+      touch.screenY,    // screenY
+      touch.clientX,    // clientX
+      touch.clientY,    // clientY
+      false,            // ctrlKey
+      false,            // altKey
+      false,            // shiftKey
+      false,            // metaKey
+      0,                // button
+      null              // relatedTarget
     );
 
     // Dispatch the simulated event to the target element
     event.target.dispatchEvent(simulatedEvent);
   }
+
+  /**
+  * Trace the original position and start time of the touch event
+  * @param event Touch event
+  */
+  function traceStart(event) {
+    var touch = event.originalEvent.changedTouches[0];
+    this._trace = {
+      start: {
+        pageX: touch.pageX,
+        pageY: touch.pageY,
+        time: Date.now()
+      }
+    };
+  }
+
+  /**
+  * Determine the difference of the original position and start time of the touch event
+  * @param event Touch event
+  */
+  function traceDiff(event) {
+    var touch = event.originalEvent.changedTouches[0];
+    this._trace['diff'] = {
+      pageX: this._trace.start.pageX - touch.pageX,
+      pageY: this._trace.start.pageY - touch.pageY,
+      time: Date.now() - this._trace.start.time
+    };
+  }
+
+  function isTraceInRange() {
+    var diff = this._trace.diff;
+    return !!diff
+      && Math.abs(diff.pageX) < clickPixelTolerance
+      && Math.abs(diff.pageY) < clickPixelTolerance
+      && diff.time < clickTimeTolerance;
+  }
+
 
   /**
    * Handle the jQuery UI widget's touchstart events
@@ -94,6 +133,9 @@
 
     // Track movement to determine if interaction was a click
     self._touchMoved = false;
+
+    // Trace start position and time
+    traceStart(event);
 
     // Simulate the mouseover event
     simulateMouseEvent(event, 'mouseover');
@@ -119,6 +161,9 @@
     // Interaction was not a click
     this._touchMoved = true;
 
+    // Trace difference in start position and time
+    traceDiff(event);
+
     // Simulate the mousemove event
     simulateMouseEvent(event, 'mousemove');
   };
@@ -140,8 +185,8 @@
     // Simulate the mouseout event
     simulateMouseEvent(event, 'mouseout');
 
-    // If the touch interaction did not move, it should trigger a click
-    if (!this._touchMoved) {
+    // If the touch interaction did not move or the move was within tolerance, it should trigger a click
+    if (!this._touchMoved || isTraceInRange()) {
 
       // Simulate the click event
       simulateMouseEvent(event, 'click');
@@ -158,7 +203,7 @@
    * original mouse event handling methods.
    */
   mouseProto._mouseInit = function () {
-    
+
     var self = this;
 
     // Delegate the touch handlers to the widget's element
@@ -176,7 +221,7 @@
    * Remove the touch event handlers
    */
   mouseProto._mouseDestroy = function () {
-    
+
     var self = this;
 
     // Delegate the touch handlers to the widget's element
